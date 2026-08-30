@@ -1,0 +1,1209 @@
+<!doctype html>
+<!-- dsh-worktable 原生皮肤：组会论文精读助手（页面基于模板 /api/worktable/template/dshell.html 构建） -->
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>组会论文精读助手</title>
+  <link rel="stylesheet" href="/api/worktable/template/dshell.css" />
+  <style>
+    /* 仅少量自造样式，控制在最小范围，其余全部走原生皮肤 */
+    .tab-panel { display: none; }
+    .tab-panel.on { display: block; margin-top: 2px; }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .col { display: flex; flex-direction: column; gap: 8px; }
+    .grow { flex: 1; min-width: 0; }
+    .pdfbox { border: 1px solid var(--dsw-alias-border-l1, #262b36); border-radius: 8px; overflow: hidden; height: 62vh; background: #fff; }
+    .pdfbox iframe { width: 100%; height: 100%; border: 0; display: block; }
+    .ppt-wrap { display: flex; gap: 10px; align-items: stretch; margin: 4px 0; }
+    .ppt-left { flex: 2 1 0; min-width: 0; }
+    .ppt-right { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+    .ppt-toolbar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+    .ppt-stage { position: relative; width: 100%; aspect-ratio: 16 / 9; background: #20242c; border: 1px solid var(--dsw-alias-border-l1, #262b36); border-radius: 8px; overflow: hidden; }
+    .ppt-stage canvas { display: block; margin: 0 auto; background: #fff; }
+    .ppt-notes { flex: 1 1 0; min-height: 0; overflow-y: auto; height: 56vh; max-height: 56vh; }
+    .pre { white-space: pre-wrap; word-break: break-word; background: var(--dsw-alias-fill-l1, rgba(255,255,255,.03)); border: 1px solid var(--dsw-alias-border-l1, #262b36); border-radius: 8px; padding: 10px 12px; font-size: 12.5px; min-height: 120px; }
+    /* Markdown 渲染区（marked 输出） */
+    .md-body { background: var(--dsw-alias-fill-l1, rgba(255,255,255,.03)); border: 1px solid var(--dsw-alias-border-l1, #262b36); border-radius: 8px; padding: 14px 16px; font-size: 13px; line-height: 1.7; max-height: 60vh; overflow: auto; }
+    .md-body h1 { font-size: 20px; margin: 12px 0 8px; border-bottom: 1px solid var(--dsw-alias-border-l1, #262b36); padding-bottom: 6px; }
+    .md-body h2 { font-size: 17px; margin: 12px 0 6px; }
+    .md-body h3 { font-size: 15px; margin: 10px 0 6px; }
+    .md-body p { margin: 6px 0; }
+    .md-body ul, .md-body ol { margin: 6px 0; padding-left: 22px; }
+    .md-body li { margin: 3px 0; }
+    .md-body code { background: rgba(255,255,255,.08); border: 1px solid var(--dsw-alias-border-l1, #262b36); border-radius: 4px; padding: 1px 5px; font-size: 12px; }
+    .md-body pre { background: #12161f; border: 1px solid var(--dsw-alias-border-l1, #262b36); border-radius: 6px; padding: 10px; overflow: auto; }
+    .md-body pre code { background: none; border: 0; padding: 0; }
+    .md-body blockquote { border-left: 3px solid var(--dsw-alias-state-accent-primary, #4f8ef7); margin: 8px 0; padding: 4px 12px; color: var(--dsw-alias-label-secondary, #9aa4b2); }
+    .md-body table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 12px; }
+    .md-body th, .md-body td { border: 1px solid var(--dsw-alias-border-l1, #262b36); padding: 5px 8px; }
+    .md-body th { background: rgba(255,255,255,.06); font-weight: 500; }
+    .md-body a { color: var(--dsw-alias-state-accent-primary, #4f8ef7); }
+    .md-body hr { border: 0; border-top: 1px solid var(--dsw-alias-border-l1, #262b36); margin: 12px 0; }
+    .md-body strong { font-weight: 600; }
+    .pre:empty::before { content: '（内容为空）'; color: var(--dsw-alias-label-tertiary, #6b7280); }
+    .locked { display: none; }
+    .help { font-size: 11.5px; color: var(--dsw-alias-label-tertiary, #6b7280); }
+    .kvline { display: flex; gap: 6px; align-items: baseline; }
+    .kvline label { flex: none; width: 84px; color: var(--dsw-alias-label-secondary, #9aa4b2); font-size: 12px; }
+    .tablock { pointer-events: none; opacity: .45; }
+    .tab-note { font-size: 10.5px; color: var(--dsw-alias-label-tertiary, #6b7280); margin-left: 6px; }
+    .timer-num { font-variant-numeric: tabular-nums; font-size: 30px; font-weight: 600; }
+  </style>
+</head>
+<body>
+<div class="dshell">
+  <h1 class="dshell-title">组会论文精读助手</h1>
+  <p class="dshell-sub">窗口1 · 论文研究所 · 三个页面工作流（可按需单独使用）：精读 / 询问+生笔记 / 预演</p>
+
+  <!-- 阶段状态徽标（随进度自动切换：未开始 / 进行中 / 已完成） -->
+  <div class="dshell-grid">
+    <div class="dshell-stat"><div class="dshell-statLabel">① 精读</div><span id="badge-read" class="dshell-badge">未开始</span></div>
+    <div class="dshell-stat"><div class="dshell-statLabel">② 询问+生笔记</div><span id="badge-ask" class="dshell-badge">未开始</span></div>
+  </div>
+
+  <div id="statusbar" class="dshell-sub"></div>
+
+  <!-- 标签页 -->
+  <div class="dshell-tabs">
+    <button class="dshell-tab dshell-tabOn" data-tab="read">① 精读</button>
+    <button class="dshell-tab" data-tab="ask" id="tab-btn-ask">② 询问 + 生笔记</button>
+    <button class="dshell-tab" data-tab="rehearse" id="tab-btn-rehearse">③ 预演</button>
+  </div>
+
+  <!-- ============================ 页面一 · 精读 ============================ -->
+  <section class="tab-panel on" id="panel-read">
+    <div class="dshell-card">
+      <h2 class="dshell-sub" style="margin:0 0 8px">1. 论文 PDF</h2>
+      <div class="col">
+        <div class="row">
+          <input class="dshell-input" id="paper-dir" placeholder="论文文件夹名（任选论文）" style="flex:0 0 220px" />
+          <input class="dshell-input grow" id="pdf-name" placeholder="该文件夹内的 PDF 文件名（任选论文）" />
+          <button class="dshell-btn" id="btn-load-pdf">加载</button>
+          <span class="help">或</span>
+          <label class="dshell-btn dshell-btnGhost" style="cursor:pointer">本地上传<input type="file" id="pdf-file" accept=".pdf" style="display:none" /></label>
+        </div>
+        <div id="pdf-status" class="dshell-muted">输入论文文件夹名 + PDF 文件名后点「加载」，或本地上传。每篇论文的相关文件存放在「项目文件夹/论文名/」子目录。</div>
+        <div class="pdfbox"><iframe id="pdf-frame" title="论文 PDF"></iframe></div>
+      </div>
+    </div>
+
+    <div class="dshell-card" id="summary-card">
+      <div class="row" style="justify-content:space-between">
+        <h2 class="dshell-sub" style="margin:0">2. 论文结构化摘要（AI 自动生成）</h2>
+        <div class="row" style="gap:6px">
+          <button class="dshell-btn dshell-btnGhost" id="btn-copy-md">复制 Markdown</button>
+          <button class="dshell-btn dshell-btnGhost" id="btn-summary">生成摘要</button>
+        </div>
+      </div>
+      <div id="summary-status" class="dshell-muted" style="margin:4px 0 6px">尚未生成摘要。</div>
+      <div class="row" style="margin:4px 0 6px">
+        <select class="dshell-input" id="gen-model" style="flex:0 0 190px">
+          <option value="glm">智谱 GLM（看图表）</option>
+          <option value="deepseek">DeepSeek（文本）</option>
+          <option value="openai">GPT（OpenAI）</option>
+        </select>
+        <span class="help">选择用于生成摘要的模型</span>
+      </div>
+      <div class="row glm-conf" style="margin:2px 0 6px;display:none">
+        <input class="dshell-input" id="glm-model" placeholder="GLM 视觉模型名（如 glm-4.6v-flash）" style="flex:1;min-width:150px" />
+        <input class="dshell-input" id="glm-pages" type="number" min="1" max="60" style="flex:0 0 66px" />
+        <span class="help">渲染页数</span>
+        <input class="dshell-input" id="zhipu-key" type="password" placeholder="智谱 ZHIPU_API_KEY" style="flex:1;min-width:170px" />
+      </div>
+      <div class="row ds-conf" style="margin:2px 0 6px;display:none">
+        <input class="dshell-input" id="ds-model" placeholder="DeepSeek 模型名（如 deepseek-chat / deepseek-reasoner）" style="flex:1;min-width:180px" />
+        <input class="dshell-input" id="api-key" type="password" placeholder="DeepSeek API Key" style="flex:1;min-width:180px" />
+      </div>
+      <div class="row oa-conf" style="margin:2px 0 6px;display:none">
+        <input class="dshell-input" id="openai-base" placeholder="OpenAI Base URL（如 https://api.openai.com/v1）" style="flex:1;min-width:200px" />
+        <input class="dshell-input" id="openai-key" type="password" placeholder="OpenAI API Key" style="flex:1;min-width:150px" />
+        <input class="dshell-input" id="openai-model" placeholder="模型名（如 gpt-4o-mini）" style="flex:1;min-width:150px" />
+        <label class="help" style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" id="openai-vision" /> 多模态（看图）</label>
+      </div>
+      <div class="row" style="margin:2px 0 6px">
+        <button class="dshell-btn dshell-btnGhost" id="btn-save-key">保存配置</button>
+      </div>
+      <div class="md-body" id="summary-content">
+（选择生成模型并粘贴对应 Key 后，加载 PDF 会自动生成结构化摘要（Markdown 渲染）；也可点右上「生成摘要」。GLM 路径会把每页渲染成图交给 GLM，能看懂图表/表格/公式。）
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ 页面二 · 询问 + 生笔记 ============================ -->
+  <section class="tab-panel" id="panel-ask">
+    <div class="dshell-card" id="gate-clarify">
+      <div class="row" style="justify-content:space-between">
+        <h2 class="dshell-sub" style="margin:0">第一部曲 · 澄清（基于页面一摘要）</h2>
+        <div class="row" style="gap:6px">
+          <span id="badge-clarify" class="dshell-badge">未开始</span>
+          <button class="dshell-btn dshell-btnDanger" id="btn-clear-clarify">清空</button>
+        </div>
+      </div>
+      <p class="help">一次只问一个问题；每个问题都说明「为什么问这个」及与阅读目标/笔记的关联。逐问轮转，直到我对你的阅读目标足够清晰。</p>
+      <div class="row">
+        <button class="dshell-btn dshell-btnGhost" id="btn-gen-clarify">开始澄清（生成第 1 题）</button>
+        <span id="clarify-progress" class="dshell-muted"></span>
+      </div>
+      <div class="dshell-card" id="clarify-current" style="display:none;background:rgba(255,255,255,.04)">
+        <div class="dshell-sub" style="margin:0 0 6px">当前问题</div>
+        <div class="pre" id="clarify-q"></div>
+        <textarea class="dshell-textarea" id="clarify-a" rows="3" placeholder="你的回答…"></textarea>
+        <div class="row">
+          <button class="dshell-btn" id="btn-clarify-next">回答并生成下一题</button>
+          <span class="help" id="clarify-hint"></span>
+        </div>
+      </div>
+      <div class="dshell-sub" style="margin:10px 0 4px">一问一答记录</div>
+      <textarea class="dshell-textarea" id="clarify-transcript" rows="8" readonly placeholder="【澄清问答记录】— 回答后自动记录。"></textarea>
+    </div>
+
+    <div class="dshell-card" id="gate-target">
+      <div class="row" style="justify-content:space-between">
+        <h2 class="dshell-sub" style="margin:0">第二部曲 · 目标锁定</h2>
+        <div class="row" style="gap:6px">
+          <span id="badge-target" class="dshell-badge">未开始</span>
+          <button class="dshell-btn dshell-btnDanger" id="btn-clear-target">清空</button>
+        </div>
+      </div>
+      <p class="help">基于【页面一摘要 + 澄清问答】生成「目标复述」与「要点清单」；确认无误后点「锁定目标」，再用它一键生成精读笔记。</p>
+      <div class="row" style="margin:2px 0 8px">
+        <button class="dshell-btn dshell-btnGhost" id="btn-gen-target">生成目标复述 + 要点清单（DeepSeek）</button>
+      </div>
+      <div class="col">
+        <div class="kvline"><label style="width:70px">目标复述</label><span class="help">用一两句话复述你读这篇论文的目的，写在与《目标复述》对应的框。</span></div>
+        <textarea class="dshell-textarea" id="target-restatement" rows="4" placeholder="【目标复述】我用一两句话复述读这篇论文的目的…"></textarea>
+        <div class="kvline"><label style="width:70px">要点清单</label><span class="help">为实现该目标必须覆盖的要点，逐条列出。</span></div>
+        <textarea class="dshell-textarea" id="target-checklist" rows="6" placeholder="【要点清单】- 要点1&#10;- 要点2&#10;- …"></textarea>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button class="dshell-btn" id="btn-lock-target">锁定目标</button>
+        <span id="target-lock-state" class="dshell-muted">未锁定</span>
+        <span class="help" id="target-hint"></span>
+      </div>
+    </div>
+
+    <div class="dshell-card" id="note-area">
+      <div class="row" style="justify-content:space-between">
+        <h2 class="dshell-sub" style="margin:0">精读笔记展示区</h2>
+        <span id="badge-note" class="dshell-badge">未开始</span>
+      </div>
+      <p class="help" id="note-hint">「目标锁定」为可选引导；本笔记区可直接编辑，也可点下方一键生成精读笔记。</p>
+      <div class="row">
+        <button class="dshell-btn" id="btn-gen-note">生成精读笔记（DeepSeek）</button>
+        <button class="dshell-btn dshell-btnGhost" id="btn-copy-note">复制笔记</button>
+      </div>
+      <textarea class="dshell-textarea" id="note-content" rows="18" placeholder="【笔记结构】论文画像 / PSR总结 / 核心贡献拆解 / 实验怎么做(模型-数据-指标-设计) / 关键实验证据 / 我的思考 / 与我研究的关联 / 论文质量评估"></textarea>
+    </div>
+  </section>
+
+  <!-- ============================ 页面三 · 预演 ============================ -->
+  <section class="tab-panel" id="panel-rehearse">
+    <div class="dshell-card">
+      <h2 class="dshell-sub" style="margin:0 0 8px">1. PPT 加载与备注发言稿</h2>
+      <div class="col">
+        <div class="row">
+          <input class="dshell-input" id="ppt-dir" placeholder="论文文件夹名（任选论文）" style="flex:0 0 200px" />
+          <input class="dshell-input grow" id="ppt-name" placeholder="该文件夹内的 PPT 文件名（任选论文）" />
+          <button class="dshell-btn" id="btn-load-ppt">加载</button>
+          <span class="help">或</span>
+          <label class="dshell-btn dshell-btnGhost" style="cursor:pointer">本地上传<input type="file" id="ppt-file" accept=".ppt,.pptx" style="display:none" /></label>
+        </div>
+        <div id="ppt-status" class="dshell-muted">输入论文文件夹名 + PPT 文件名后点「加载」，或本地上传。左：PPT 舞台（16:9，可缩放、上下页切换）；右：当前页自带备注发言稿。</div>
+        <div class="ppt-wrap">
+          <div class="ppt-left">
+            <div class="ppt-toolbar">
+              <button class="dshell-btn dshell-btnGhost" id="ppt-prev" style="padding:2px 8px">‹ 上一页</button>
+              <span id="ppt-page-ind" class="dshell-muted">- / -</span>
+              <button class="dshell-btn dshell-btnGhost" id="ppt-next" style="padding:2px 8px">下一页 ›</button>
+              <span class="help" style="margin-left:auto">缩放</span>
+              <button class="dshell-btn dshell-btnGhost" id="ppt-zoom-out" style="padding:2px 8px">-</button>
+              <input type="range" id="ppt-zoom" min="40" max="250" value="100" style="width:110px" />
+              <button class="dshell-btn dshell-btnGhost" id="ppt-zoom-in" style="padding:2px 8px">+</button>
+              <button class="dshell-btn dshell-btnGhost" id="ppt-zoom-fit" style="padding:2px 8px">适应</button>
+            </div>
+            <div class="ppt-stage" id="ppt-stage"><canvas id="ppt-cur-canvas"></canvas></div>
+          </div>
+          <div class="ppt-right">
+            <div class="row" style="justify-content:space-between">
+              <h2 class="dshell-sub" style="margin:0">当前页 · PPT 备注发言稿</h2>
+              <span class="help">首次加载如无视图会自动转换</span>
+            </div>
+            <div class="pre ppt-notes" id="ppt-notes"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="dshell-card">
+      <h2 class="dshell-sub" style="margin:0 0 8px">2. 计时器</h2>
+      <div class="row">
+        <span class="timer-num" id="timer-num">00:00</span>
+        <button class="dshell-btn" id="timer-start">开始</button>
+        <button class="dshell-btn dshell-btnGhost" id="timer-pause">暂停</button>
+        <button class="dshell-btn dshell-btnDanger" id="timer-reset">重置</button>
+        <span class="help" id="timer-target">目标时长：__:__</span>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ---------- 从自身 URL 推导项目文件夹（挂载后 location 形如 /api/worktable/site/<编码目录>/deepread.html）----------
+  function getProjectDir() {
+    var m;
+    if (location.pathname.indexOf('/api/worktable/site/') === 0) {
+      m = location.pathname.match(/\/api\/worktable\/site\/([^/]+)\//);
+    } else {
+      m = location.pathname.match(/\/site\/([^/]+)\//);
+    }
+    if (!m) return "";
+    try { return decodeURIComponent(m[1]); } catch (e) { return m[1]; }
+  }
+  var PROJECT_DIR = getProjectDir();
+  var currentPaperDir = "";   // 论文文件夹（相对项目根），随所选论文
+  var currentPdfName = "";    // 该文件夹内的 PDF 文件名
+  var currentPdfBuffer = null;
+  var currentPptDir = "";    // PPT 所在论文文件夹（相对项目根）
+  var currentPptName = "";   // PPT 文件名
+  var _busySummary = false;
+  var _hasSummary = false;   // 当前论文是否已生成/加载摘要（用于阶段判定）
+
+  function siteFile(rel) {
+    return "/api/worktable/site/" + encodeURIComponent(PROJECT_DIR) + "/" + String(rel).split("/").map(encodeURIComponent).join("/");
+  }
+  function paperRoot() { return PROJECT_DIR ? PROJECT_DIR + "\\" + currentPaperDir : ""; }
+  function summaryFilePath() { return paperRoot() + "\\summary.md"; }
+  function stateFilePath() { return paperRoot() + "\\reading-state.json"; }
+  function stateUrl() { return "/api/worktable/file?path=" + encodeURIComponent(stateFilePath()); }
+  // 写入前自动创建论文文件夹（mkdir 一次建一层，逐层建）
+  function ensurePaperDir() {
+    if (!PROJECT_DIR || !currentPaperDir) return;
+    var parts = String(currentPaperDir).split("/");
+    var cur = PROJECT_DIR;
+    for (var i = 0; i < parts.length; i++) {
+      cur = cur + "\\" + parts[i];
+      try {
+        fetch("/api/worktable/mkdir", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ path: cur }) }).catch(function () {});
+      } catch (e) {}
+    }
+  }
+
+  // ---------- 状态持久化 ----------
+  var defaults = {
+    phase: { read: "", ask: "", rehearse: "" },
+    clarify: "",
+    clarifyQuestions: [],
+    clarifyAnswers: [],
+    clarifyIndex: 0,
+    clarifyDone: false,
+    target: { restatement: "", checklist: "", locked: false },
+    note: "",
+    timer: { on: false, start: 0, elapsed: 0 }
+  };
+  function deepMerge(base, extra) {
+    if (!extra) return base;
+    var out = JSON.parse(JSON.stringify(base));
+    for (var k in extra) { if (extra.hasOwnProperty(k)) out[k] = extra[k]; }
+    // 细粒度合并，防止旧文件覆盖新字段
+    out.phase = Object.assign({ read:"", ask:"", rehearse:"" }, base.phase || {}, extra.phase || {});
+    out.target = Object.assign({ restatement:"", checklist:"", locked:false }, base.target || {}, extra.target || {});
+    delete out.annotations; // 标注功能已移除
+    delete out.rehe;        // 预演页 2/3/4 已删除
+    return out;
+  }
+  var state = JSON.parse(JSON.stringify(defaults));
+
+  function save() {
+    if (!PROJECT_DIR || !currentPaperDir) return;
+    ensurePaperDir();
+    autoStage(); // 根据当前内容自动更新阶段徽标/进度条
+    var body = JSON.stringify({ path: stateFilePath(), content: JSON.stringify(state, null, 2) });
+    fetch("/api/worktable/write", { method: "POST", headers: { "content-type": "application/json" }, body: body })
+      .then(function (r) { return r.json(); })
+      .catch(function () {});
+  }
+  function load() {
+    if (!PROJECT_DIR || !currentPaperDir) return;
+    fetch(stateUrl(), { cache: "no-store" }).then(function (r) { if (!r.ok) throw 0; return r.text(); })
+      .then(function (text) {
+        if (!text || !text.trim()) throw 0;
+        var parsed;
+        try { parsed = JSON.parse(text); } catch (e) { throw 0; }
+        state = deepMerge(defaults, parsed);
+        applyAll();
+      })
+      .catch(function () { /* 首次无该论文的 reading-state，用内置默认值 */ });
+  }
+
+  // ---------- 阶段徽标 ----------
+  function setPhaseBadge(el, ph) {
+    el.className = "dshell-badge" + (ph === "已完成" ? " dshell-badgeDone" : ph === "进行中" ? " dshell-badgeWait" : "");
+    el.textContent = ph || "未开始";
+  }
+  function renderBadges() {
+    setPhaseBadge($("badge-read"), state.phase.read);
+    setPhaseBadge($("badge-ask"), state.phase.ask);
+  }
+  function setPhase(tab, ph) { state.phase[tab] = ph; renderBadges(); save(); }
+  function phaseOf(tab) { return state.phase[tab] || "未开始"; }
+  function autoPhase(tab) {
+    // 精读页：加载了 PDF 且已展示摘要 → 进行中；用户确认完成 → 已完成
+  }
+  function updateStatusBar() {
+    var s = [];
+    function map(t, name) {
+      var p = phaseOf(t);
+      var sym = p === "已完成" ? "✅" : p === "进行中" ? "⏳" : "⚪";
+      s.push(name + " " + sym + p);
+    }
+    map("read", "精读"); map("ask", "询问+生笔记");
+    $("statusbar").textContent = "阶段进度：" + s.join("　|　");
+  }
+  // 自动判定各阶段状态（未开始/进行中/已完成），随内容进度更新
+  function autoStage() {
+    if (state.phase.read !== "已完成") {
+      state.phase.read = _hasSummary ? "已完成" : ((currentPaperDir || currentPdfBuffer) ? "进行中" : "");
+    }
+    if (state.phase.ask !== "已完成") {
+      var clarifyOn = (state.clarifyQuestions && state.clarifyQuestions.length) || (state.clarify && state.clarify.trim());
+      state.phase.ask = (state.note && String(state.note).trim()) ? "已完成" : (clarifyOn ? "进行中" : "");
+    }
+    renderBadges(); updateStatusBar();
+  }
+
+  // ---------- PDF ----------
+  function loadProjectPdf() {
+    var dir = $("paper-dir").value.trim().replace(/^[\\/]+/, "").replace(/[\\/]+/g, "/").replace(/\/+$/, "");
+    var name = $("pdf-name").value.trim();
+    if (!PROJECT_DIR) { $("pdf-status").textContent = "⚠ 无法从当前地址识别项目文件夹，请用本地上传。"; return; }
+    if (!dir) { $("pdf-status").textContent = "请先填写论文文件夹名。"; return; }
+    if (!name) { $("pdf-status").textContent = "请填写该论文文件夹内的 PDF 文件名。"; return; }
+    currentPaperDir = dir; currentPdfName = name; currentPdfBuffer = null;
+    $("pdf-frame").src = siteFile(dir + "/" + name);
+    $("pdf-status").textContent = "已加载：" + dir + "/" + name + "（来自项目文件夹）";
+    if (phaseOf("read") === "") setPhase("read", "进行中");
+    updateStatusBar(); save(); saveLastPdf();
+    $("summary-content").textContent = ""; _hasSummary = false;
+    loadSummary().then(function (found) { if (!found) generateSummary(); });
+  }
+  // ---------- 上传 PDF 自动保存到项目同名文件夹 ----------
+  function bufToB64(buf) {
+    var bytes = new Uint8Array(buf), bin = "";
+    for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
+  }
+  function writeTextFile(path, content) {
+    return fetch("/api/worktable/write", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ path: path, content: content }) }).then(function (r) { return r.json(); });
+  }
+  function fileEndpointExists(abs) {
+    return fetch("/api/worktable/file?path=" + encodeURIComponent(abs), { cache: "no-store" }).then(function (r) { return r.ok; }).catch(function () { return false; });
+  }
+  // 连 worktable 终端执行命令，并轮询直到 watchAbs 文件出现（用于生成 PDF / 保存上传）
+  function runTerminalAndWait(cmd, watchAbs) {
+    return new Promise(function (resolve, reject) {
+      var done = false, ws;
+      var poll = setInterval(function () {
+        fileEndpointExists(watchAbs).then(function (ok) {
+          if (ok && !done) { done = true; clearInterval(poll); clearTimeout(to); try { ws && ws.close(); } catch (e) {} resolve(); }
+        });
+      }, 2000);
+      var to = setTimeout(function () { if (!done) { done = true; clearInterval(poll); try { ws && ws.close(); } catch (e) {} reject(new Error("终端操作超时")); } }, 90000);
+      try {
+        var wsUrl = "ws://" + (location.host || "127.0.0.1:3080") + "/api/worktable/term?cwd=" + encodeURIComponent(PROJECT_DIR) + "&cols=100&rows=40";
+        ws = new WebSocket(wsUrl);
+        ws.onopen = function () { try { ws.send(cmd + "\r"); } catch (e) {} };
+        ws.onerror = function () { if (!done) { done = true; clearInterval(poll); clearTimeout(to); reject(new Error("终端不可用")); } };
+      } catch (e) { done = true; clearInterval(poll); clearTimeout(to); reject(e); }
+    });
+  }
+  function loadLocalPdf(file) {
+    if (!file) return;
+    var folder = file.name.replace(/\.pdf$/i, "").trim().replace(/[\\/:"*?<>|]/g, "_").replace(/\s+/g, "_") || "paper";
+    if (!PROJECT_DIR) { $("pdf-status").textContent = "无法定位项目目录，未能自动保存。"; return; }
+    var absPdf = PROJECT_DIR + "\\" + folder + "\\" + file.name;
+    $("pdf-status").textContent = "正在保存上传 PDF 到项目（" + folder + "/" + file.name + "）…";
+    file.arrayBuffer().then(function (buf) {
+      return fileEndpointExists(absPdf).then(function (exists) {
+        if (exists) { $("pdf-status").textContent = "项目已有同名 PDF，直接使用。"; return; }
+        // 把 PDF 转 base64 写入临时文本，再用终端解码存成 PDF
+        var tmp = PROJECT_DIR + "\\_upload_tmp.txt";
+        return writeTextFile(tmp, bufToB64(buf)).then(function () {
+          var cmd = 'powershell -NoProfile -ExecutionPolicy Bypass -File "' + PROJECT_DIR + '\\save-upload.ps1" -B64File "' + tmp + '" -OutPdf "' + absPdf + '"';
+          $("pdf-status").textContent = "自动保存到文件夹（" + folder + "/" + file.name + "）…";
+          return runTerminalAndWait(cmd, absPdf);
+        });
+      });
+    }).then(function () {
+      currentPaperDir = folder; currentPdfName = file.name; currentPdfBuffer = null;
+      $("paper-dir").value = folder;
+      $("pdf-frame").src = siteFile(folder + "/" + file.name);
+      $("pdf-status").textContent = "已保存并加载：" + folder + "/" + file.name + "（摘要将自动生成）";
+      if (phaseOf("read") === "") setPhase("read", "进行中");
+      updateStatusBar(); save(); saveLastPdf();
+      $("summary-content").textContent = ""; _hasSummary = false;
+      loadSummary().then(function (found) { if (!found) generateSummary(); });
+    }).catch(function (err) {
+      // 保存失败：回退为会话内 blob 查看
+      currentPaperDir = folder; currentPdfName = file.name; currentPdfBuffer = null;
+      file.arrayBuffer().then(function (b) { currentPdfBuffer = b; });
+      $("pdf-frame").src = URL.createObjectURL(file);
+      $("pdf-status").textContent = "自动保存失败（" + ((err && err.message) || "") + "），本次以会话内预览显示；摘要仍可生成。";
+      if (phaseOf("read") === "") setPhase("read", "进行中");
+      updateStatusBar(); save(); saveLastPdf(); loadSummary();
+    });
+  }
+  // 记录/恢复「上次查看的论文」，冷启动后仍能看到对应摘要与标注
+  var LAST_PDF_KEY = "dsh.deepread.lastPdf";
+  function saveLastPdf() {
+    try { localStorage.setItem(LAST_PDF_KEY, JSON.stringify({ dir: currentPaperDir, pdf: currentPdfName })); } catch (e) {}
+  }
+  function restoreLastPdf() {
+    try {
+      var raw = localStorage.getItem(LAST_PDF_KEY);
+      if (!raw) return;
+      var rec = JSON.parse(raw);
+      if (!rec || !rec.dir) return;
+      currentPaperDir = rec.dir || ""; currentPdfName = rec.pdf || "";
+      if (currentPaperDir) $("paper-dir").value = currentPaperDir;
+      if (currentPdfName) $("pdf-name").value = currentPdfName;
+      if (currentPaperDir && currentPdfName) {
+        $("pdf-frame").src = siteFile(currentPaperDir + "/" + currentPdfName);
+        $("pdf-status").textContent = "已恢复上次查看：" + currentPaperDir + "/" + currentPdfName;
+      } else {
+        $("pdf-status").textContent = "已恢复上次查看（本地上传）" + (currentPaperDir ? ("，文件夹 " + currentPaperDir) : "") + "；摘要已恢复，PDF 需重新选择。";
+      }
+      loadSummary().then(function (found) { if (!found) generateSummary(); });
+    } catch (e) {}
+  }
+
+  // ---------- 页面三 · PPT 单页 16:9 舞台 + 缩放 + 上下页 + 备注（左右并排）----------
+  function pptDirFromInput() { return $("ppt-dir").value.trim().replace(/^[\\/]+/, "").replace(/[\\/]+/g, "/").replace(/\/+$/, ""); }
+  var _pptPdf = null;
+  var pptNotesArr = [];
+  var pptCurPage = 1;
+  var pptPageCount = 0;
+  var pptZoom = 100;
+  // 每份 PPT 按文件名派生自己的视图(.pdf)与备注(.md)
+  function pptBaseName(n) { return String(n || "").replace(/\.(pptx?|ppt)$/i, "").trim(); }
+  function pptViewFile() { return pptBaseName(currentPptName) + ".pdf"; }
+  function pptNotesFile() { return pptBaseName(currentPptName) + ".md"; }
+  function loadProjectPpt() {
+    var dir = pptDirFromInput();
+    var name = $("ppt-name").value.trim();
+    if (!PROJECT_DIR) { $("ppt-status").textContent = "⚠ 无法从当前地址识别项目文件夹。" ; return; }
+    if (!dir) { $("ppt-status").textContent = "请先填写论文文件夹名。"; return; }
+    if (!name) { $("ppt-status").textContent = "请填写该文件夹内的 PPT 文件名。"; return; }
+    currentPptDir = dir; currentPptName = name;
+    saveLastPpt();
+    _pptPdf = null; pptCurPage = 1; pptPageCount = 0; pptZoom = 100;
+    $("ppt-zoom").value = 100; $("ppt-page-ind").textContent = "- / -";
+    var view = pptViewFile();
+    $("ppt-status").textContent = "正在加载 PPT 视图： " + dir + "/" + view + " …";
+    fetch(siteFile(dir + "/" + view), { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error("找不到 " + dir + "/" + view + "（该 PPT 的视图尚未生成）"); return r.arrayBuffer(); })
+      .then(function (buf) {
+        return ensurePdfJs().then(function () {
+          return window.pdfjsLib.getDocument({ data: buf }).promise.then(function (pdf) {
+            _pptPdf = pdf; pptPageCount = pdf.numPages;
+            return renderPptCurrentPage();
+          });
+        });
+      })
+      .then(function () {
+        $("ppt-status").textContent = "已加载：" + dir + "/" + name + "；左：16:9 PPT（可缩放、上下页/滚轮）；右：当前页备注。";
+        loadPptNotes();
+      })
+      .catch(function (err) {
+        var msg = (err && err.message) ? err.message : String(err);
+        // 视图缺失：自动通过 worktable 终端转换生成，再自动重载
+        if (autoConvertPpt()) return;
+        $("ppt-status").textContent = "PPT 视图加载失败：" + msg + "。请先用 make-ppt-view.ps1 把该 PPT 转换成 <PPT名>.pdf 与 <PPT名>.md（若改过 PPT，需重新运行脚本）。";
+        $("ppt-notes").textContent = "";
+      });
+  }
+  // 自动转换：连 worktable 终端，在项目目录运行 make-ppt-view.ps1，并轮询输出文件直到生成
+  var _convBusy = false;
+  var _convWs = null;
+  function pptAbsPath() { return PROJECT_DIR + "\\" + currentPptDir + "\\" + currentPptName; }
+  function autoConvertPpt() {
+    if (_convBusy || !PROJECT_DIR || !currentPptDir || !currentPptName) return false;
+    _convBusy = true;
+    var view = pptViewFile();
+    var done = false;
+    var closeAll = function () { try { if (_convWs) { _convWs.close(); _convWs = null; } } catch (e) {} };
+    var poll = setInterval(function () {
+      fetch(siteFile(currentPptDir + "/" + view), { cache: "no-store" })
+        .then(function (r) { if (r.ok && !done) { done = true; _convBusy = false; clearInterval(poll); clearTimeout(timeout); try { _convWs && _convWs.close(); } catch (e) {} $("ppt-status").textContent = "转换完成，正在加载…"; setTimeout(function () { loadProjectPpt(); }, 400); } })
+        .catch(function () {});
+    }, 2000);
+    var timeout = setTimeout(function () {
+      if (done) return; done = true; _convBusy = false; clearInterval(poll); closeAll();
+      $("ppt-status").textContent = "自动转换超时：未生成 " + view + "，请确认该 PPT 是否存在（或手动运行 make-ppt-view.ps1）。"; $("ppt-notes").textContent = "";
+    }, 120000);
+    try {
+      var script = PROJECT_DIR + "\\make-ppt-view.ps1";
+      var cmd = 'powershell -NoProfile -ExecutionPolicy Bypass -File "' + script + '" -Pptx "' + pptAbsPath() + '"';
+      var wsUrl = ("ws://" + (location.host || "127.0.0.1:3080") + "/api/worktable/term?cwd=" + encodeURIComponent(PROJECT_DIR) + "&cols=100&rows=40");
+      _convWs = new WebSocket(wsUrl);
+      _convWs.onopen = function () { $("ppt-status").textContent = "正在自动转换 PPT 视图/备注（约 10~30 秒），请稍候…"; try { _convWs.send(cmd + "\r"); } catch (e) {} };
+      _convWs.onerror = function () { if (!done) { done = true; _convBusy = false; clearInterval(poll); clearTimeout(timeout); $("ppt-status").textContent = "自动转换通道不可用（未连上终端）。请手动运行 make-ppt-view.ps1。"; $("ppt-notes").textContent = ""; } };
+      return true;
+    } catch (e) { done = true; _convBusy = false; clearInterval(poll); clearTimeout(timeout); return false; }
+  }
+  function renderPptCurrentPage() {
+    if (!_pptPdf || !pptPageCount) return;
+    var stage = $("ppt-stage");
+    var stageW = (stage && stage.clientWidth) || 600;
+    _pptPdf.getPage(pptCurPage).then(function (p) {
+      var base = p.getViewport({ scale: 1 });
+      var scale = (stageW / base.width) * (pptZoom / 100);
+      var vp = p.getViewport({ scale: scale });
+      var canvas = $("ppt-cur-canvas");
+      canvas.width = vp.width; canvas.height = vp.height;
+      return p.render({ canvasContext: canvas.getContext("2d"), viewport: vp }).promise.then(function () {
+        $("ppt-page-ind").textContent = pptCurPage + " / " + pptPageCount;
+        showPptNotes();
+      });
+    }).catch(function () {});
+  }
+  function pptNav(delta) {
+    var np = Math.min(pptPageCount, Math.max(1, pptCurPage + delta));
+    if (np === pptCurPage) return;
+    pptCurPage = np; renderPptCurrentPage();
+  }
+  function pptSetZoom(z) {
+    z = Math.min(250, Math.max(40, z | 0));
+    pptZoom = z; $("ppt-zoom").value = z; renderPptCurrentPage();
+  }
+  function parsePptNotes(text) {
+    var arr = [];
+    var re = /^##\s*(?:Slide\s*(\d+)|第\s*(\d+)\s*页)\s*$/gim;
+    var m, ms = [];
+    while ((m = re.exec(text)) !== null) ms.push(m);
+    for (var i = 0; i < ms.length; i++) {
+      var num = parseInt(ms[i][1] || ms[i][2], 10);
+      var start = ms[i].index + ms[i][0].length;
+      var end = (i + 1 < ms.length) ? ms[i + 1].index : text.length;
+      arr[num - 1] = text.slice(start, end).trim();
+    }
+    return arr;
+  }
+  function showPptNotes() {
+    var txt = pptNotesArr[pptCurPage - 1];
+    txt = (txt && txt.trim()) ? txt : "（该页无备注）";
+    $("ppt-notes").innerHTML = mdLite("## 第 " + pptCurPage + " 页\n\n" + txt);
+  }
+  function loadPptNotes() {
+    if (!PROJECT_DIR || !currentPptDir) { $("ppt-notes").textContent = "（请先加载 PPT。）"; return; }
+    var nf = pptNotesFile();
+    fetch("/api/worktable/file?path=" + encodeURIComponent(PROJECT_DIR + "\\" + currentPptDir + "\\" + nf), { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw 0; return r.text(); })
+      .then(function (t) { pptNotesArr = parsePptNotes(String(t || "").replace(/^\uFEFF/, "")); showPptNotes(); })
+      .catch(function () { pptNotesArr = []; $("ppt-notes").textContent = "（未找到备注 " + nf + "。首次加载会自动转换生成；若仍未生成，可手动运行 make-ppt-view.ps1。）"; });
+  }
+  var LAST_PPT_KEY = "dsh.deepread.lastPpt";
+  function saveLastPpt() { try { localStorage.setItem(LAST_PPT_KEY, JSON.stringify({ dir: currentPptDir, name: currentPptName })); } catch (e) {} }
+  function restoreLastPpt() {
+    try {
+      var raw = localStorage.getItem(LAST_PPT_KEY);
+      if (raw) {
+        var rec = JSON.parse(raw);
+        if (rec && rec.dir) {
+          $("ppt-dir").value = rec.dir;
+          $("ppt-name").value = rec.name || "";
+          loadProjectPpt();
+          return;
+        }
+      }
+      // 无历史：用当前论文文件夹预填，减少输错
+      if (currentPaperDir && !$("ppt-dir").value) $("ppt-dir").value = currentPaperDir;
+    } catch (e) {}
+  }
+  function loadLocalPpt(file) {
+    if (!file) return;
+    currentPptDir = ""; currentPptName = file.name;
+    saveLastPpt();
+    _pptPdf = null; pptPageCount = 0; pptCurPage = 1;
+    $("ppt-stage").innerHTML = '<canvas id="ppt-cur-canvas"></canvas>'; $("ppt-notes").textContent = "";
+    $("ppt-page-ind").textContent = "- / -";
+    $("ppt-status").textContent = "已选本地上传：" + file.name + "（提示：上传的 PPT 无法在页面内自动转视图/备注；请放入项目论文文件夹，用 make-ppt-view.ps1 生成 slides.pdf 与 notes.md 后再加载。）";
+  }
+
+  // ---------- 结构化摘要（按论文文件夹读/写 summary.md）----------
+  function summaryFile() {
+    return "/api/worktable/file?path=" + encodeURIComponent(summaryFilePath());
+  }
+  // 轻量 Markdown 渲染（标题/加粗/列表/引用），让摘要可读
+  function mdLite(t) {
+    var esc = function (s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); };
+    var lines = String(t).split(/\r?\n/);
+    var out = [], inList = false;
+    lines.forEach(function (line) {
+      var s = esc(line);
+      if (inList && !/^\s*[-*] /.test(s)) { out.push("</ul>"); inList = false; }
+      if (!inList && /^\s*[-*] /.test(s)) { out.push("<ul>"); inList = true; }
+      if (/^#{1,3}\s/.test(s)) { out.push("<b>" + s.replace(/^#+\s*/, "") + "</b>"); }
+      else if (/^\s*[-*] /.test(s)) { out.push("<li>" + s.replace(/^\s*[-*] /, "") + "</li>"); }
+      else if (/^>\s?/.test(s)) { out.push("<div style=\"border-left:3px solid var(--dsw-alias-border-l2,#3a4150);padding-left:8px;margin:4px 0;color:var(--dsw-alias-label-secondary,#9aa4b2)\">" + s.replace(/^>\s?/, "") + "</div>"); }
+      else if (!s.trim()) { out.push("<br>"); }
+      else { out.push("<div>" + s + "</div>"); }
+    });
+    if (inList) out.push("</ul>");
+    return out.join("\n").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+  }
+  function loadSummary() {
+    if (!PROJECT_DIR || !currentPaperDir) { $("summary-status").textContent = "请先选择论文文件夹并打开。"; return Promise.resolve(false); }
+    return fetch(summaryFile(), { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw 0; return r.text(); })
+      .then(function (text) {
+        if (!text || !text.trim()) throw 0;
+        text = text.replace(/^\uFEFF/, "");
+        var content = text;
+        try {
+          var j = JSON.parse(text);
+          if (j && typeof j === "object") content = j.content || j.summary || text;
+        } catch (e) { /* 纯文本 */ }
+        if (!content || !String(content).trim()) throw 0;
+        _summaryRaw = String(content).trim();
+        renderMarkdownInto($("summary-content"), _summaryRaw);
+        $("summary-status").textContent = "已自动加载摘要（" + currentPaperDir + "\\summary.md）。";
+        _hasSummary = true;
+        autoStage();
+        return true;
+      })
+      .catch(function () {
+        $("summary-content").textContent = "（尚未生成摘要。加载 PDF 后会自动按所选模型生成，或点「生成摘要」。）";
+        $("summary-status").textContent = "未找到摘要文件 " + currentPaperDir + "\\summary.md。";
+        _hasSummary = false;
+        autoStage();
+        return false;
+      });
+  }
+  // ---------- 摘要 Markdown 渲染（marked 懒加载）----------
+  var _marked = null;
+  var _summaryRaw = "";
+  function ensureMarked() {
+    if (window.marked) return Promise.resolve();
+    if (_marked) return _marked;
+    var CDN = [
+      "https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js",
+      "https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"
+    ];
+    _marked = new Promise(function (resolve, reject) {
+      var i = 0;
+      (function tryLoad() {
+        if (i >= CDN.length) { reject(new Error("无法加载 marked")); return; }
+        var s = document.createElement("script"); s.src = CDN[i++];
+        s.onload = function () { resolve(); };
+        s.onerror = function () { tryLoad(); };
+        document.head.appendChild(s);
+      })();
+    });
+    return _marked;
+  }
+  function mdRender(text) {
+    if (window.marked && window.marked.parse) return window.marked.parse(text);
+    return mdLite(text); // 兜底：轻量渲染
+  }
+  // 先确保 marked 加载，再渲染到元素（避免一开始加载不到 marked 时的原生回退）
+  function renderMarkdownInto(el, text) {
+    if (!el) return;
+    ensureMarked().then(function () { el.innerHTML = mdRender(text); })
+      .catch(function () { el.innerHTML = mdRender(text); });
+  }
+  function copyMd() {
+    var txt = _summaryRaw || $("summary-content").textContent;
+    var done = function () { alert("已复制 Markdown。"); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done).catch(function () { fallbackCopy(txt); done(); });
+    else { fallbackCopy(txt); done(); }
+  }
+  // ---------- API Key / 模型设置（仅存本机浏览器 localStorage，不出本机）----------
+  var DSP_KEY = "dsh.deepread.dsKey";
+  var DS_MODEL_KEY = "dsh.deepread.dsModel";
+  var ZP_KEY = "dsh.deepread.zhipuKey";
+  var GLM_MODEL_KEY = "dsh.deepread.glmModel";
+  var GLM_PAGES_KEY = "dsh.deepread.glmPages";
+  var OA_KEY = "dsh.deepread.openaiKey";
+  var OA_BASE = "dsh.deepread.openaiBase";
+  var OA_MODEL = "dsh.deepread.openaiModel";
+  var OA_VISION = "dsh.deepread.openaiVision";
+  function _lsGet(k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } }
+  function _lsSet(k, v) { try { localStorage.setItem(k, String(v)); } catch (e) {} }
+  function getKey() { return _lsGet(DSP_KEY, ""); }
+  function dsModel() { return _lsGet(DS_MODEL_KEY, "deepseek-chat"); }
+  function getZhipuKey() { return _lsGet(ZP_KEY, ""); }
+  function glmModel() { return _lsGet(GLM_MODEL_KEY, "glm-4.6v-flash"); }
+  function glmPages() { var v = parseInt(_lsGet(GLM_PAGES_KEY, "18"), 10); return v > 0 ? v : 18; }
+  function genModel() { var s = $("gen-model"); return s ? s.value : "glm"; }
+  function openaiBase() { return $("openai-base") ? $("openai-base").value.trim().replace(/\/$/, "") || _lsGet(OA_BASE, "https://api.openai.com/v1") : _lsGet(OA_BASE, "https://api.openai.com/v1"); }
+  function openaiKey() { return _lsGet(OA_KEY, ""); }
+  function openaiModel() { return _lsGet(OA_MODEL, "gpt-4o-mini"); }
+  function openaiVision() { return _lsGet(OA_VISION, "") === "1"; }
+  function setKeys() {
+    try {
+      _lsSet(DSP_KEY, $("api-key").value.trim()); _lsSet(ZP_KEY, $("zhipu-key").value.trim());
+      _lsSet(DS_MODEL_KEY, ($("ds-model") ? $("ds-model").value.trim() : "") || "deepseek-chat");
+      _lsSet(OA_KEY, $("openai-key").value.trim()); _lsSet(OA_MODEL, $("openai-model").value.trim());
+      _lsSet(OA_VISION, $("openai-vision").checked ? "1" : "0");
+      var b = $("openai-base").value.trim(); _lsSet(OA_BASE, b);
+    } catch (e) {}
+    var mm = $("glm-model").value.trim(); if (mm) _lsSet(GLM_MODEL_KEY, mm);
+    var pg = parseInt($("glm-pages").value, 10); if (pg > 0) _lsSet(GLM_PAGES_KEY, String(pg));
+    $("summary-status").textContent = "Key 已保存（仅存本机浏览器）。";
+  }
+  function refreshKeyUI() {
+    $("api-key").value = getKey();
+    $("zhipu-key").value = getZhipuKey();
+    $("glm-model").value = glmModel();
+    $("glm-pages").value = glmPages();
+    if ($("ds-model")) $("ds-model").value = dsModel();
+    $("openai-key").value = openaiKey();
+    $("openai-model").value = openaiModel();
+    $("openai-base").value = openaiBase();
+    $("openai-vision").checked = openaiVision();
+    syncConfigRows();
+  }
+  function syncConfigRows() {
+    var m = genModel();
+    var map = { glm: "glm-conf", deepseek: "ds-conf", openai: "oa-conf" };
+    var target = map[m] || "glm-conf";
+    var els = document.querySelectorAll(".glm-conf, .ds-conf, .oa-conf");
+    Array.prototype.forEach.call(els, function (el) { el.style.display = el.classList.contains(target) ? "" : "none"; });
+  }
+  function saveKey() { setKeys(); }
+
+  // ---------- pdf.js：在浏览器内提取 PDF 文本 ----------
+  var _pdfjs = null;
+  function ensurePdfJs() {
+    if (window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions) return Promise.resolve();
+    if (_pdfjs) return _pdfjs;
+    var CDN = [
+      { script: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js", worker: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js" },
+      { script: "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js", worker: "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js" }
+    ];
+    _pdfjs = new Promise(function (resolve, reject) {
+      var idx = 0;
+      (function tryLoad() {
+        if (idx >= CDN.length) { reject(new Error("无法加载 PDF 渲染库 pdf.js（cdnjs/jsdelivr 均不可达，请检查浏览器是否可联网）")); return; }
+        var c = CDN[idx++];
+        var s = document.createElement("script");
+        s.src = c.script;
+        s.onload = function () {
+          try {
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc = c.worker;
+            resolve();
+          } catch (e) { reject(e); }
+        };
+        s.onerror = function () { tryLoad(); };  // 回退到下一个 CDN
+        document.head.appendChild(s);
+      })();
+    });
+    return _pdfjs;
+  }
+  function extractPdfText(buf) {
+    return ensurePdfJs().then(function () {
+      return window.pdfjsLib.getDocument({ data: buf }).promise.then(function (pdf) {
+        var texts = [], chain = Promise.resolve();
+        for (var i = 1; i <= pdf.numPages; i++) (function (n) {
+          chain = chain.then(function () {
+            return pdf.getPage(n).then(function (p) { return p.getTextContent().then(function (tc) {
+              texts.push("[Page " + n + "]\n" + tc.items.map(function (it) { return it.str; }).join(" "));
+            }); });
+          });
+        })(i);
+        return chain.then(function () { return texts.join("\n\n"); });
+      });
+    });
+  }
+
+  // ---------- 调用 DeepSeek API ----------
+  // 摘要「讲故事」结构：旧认知 → 新痛点 → 新贡献，并给原文与解析
+  var SUMMARY_SYS = "你是论文精读助手。请基于给定论文（文本或页图），输出能讲清这篇论文『讲了一个什么故事』的结构化中文摘要。核心是按以下三段逻辑展开（讲故事主线），每一段都【必须】给出对应的【原文摘录】与【解析】：\n" +
+"一、旧认知：以前我们以为……/已经能做到什么程度？（对应原文 + 解析）\n" +
+"二、新痛点：但实际上还有什么问题没解决？（对应原文 + 解析）\n" +
+"三、新贡献：我发现了什么/提出了什么，让这个问题不再是问题？（对应原文 + 解析）\n" +
+"之后再补充：标题 / 作者 / 年份·会议 / 核心方法 / 实验怎么做 / 关键实验证据 / 结论 / 局限性。\n用 Markdown，精炼且完整；引用原文时给原文片段；只基于论文内容，不要虚构。";
+
+  function buildPrompt(text) {
+    var max = 60000;
+    if (text.length > max) text = text.slice(0, max) + "\n...[原文过长已截断]";
+    var sys = SUMMARY_SYS;
+    var usr = "论文文本如下：\n\n" + text;
+    return { system: sys, user: usr };
+  }
+  function callDeepSeek(key, prompt) {
+    return fetch("https://api.deepseek.com/chat/completions", {
+      method: "POST",
+      headers: { "content-type": "application/json", "authorization": "Bearer " + key },
+      body: JSON.stringify({ model: dsModel(), temperature: 0.3, messages: [
+        { role: "system", content: prompt.system },
+        { role: "user", content: prompt.user }
+      ]})
+    }).then(function (r) {
+      if (!r.ok) { return r.json().catch(function () { return {}; }).then(function (j) { throw new Error((j && j.error && j.error.message) || ("HTTP " + r.status)); }); }
+      return r.json();
+    }).then(function (data) {
+      var c = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+      if (!c) throw new Error("空回复");
+      return String(c).trim();
+    });
+  }
+
+  // 通用 OpenAI 兼容 chat 调用（DeepSeek / GLM / GPT 等）
+  function callChat(base, key, model, messages) {
+    return fetch(base + "/chat/completions", {
+      method: "POST",
+      headers: { "content-type": "application/json", "authorization": "Bearer " + key },
+      body: JSON.stringify({ model: model, temperature: 0.3, messages: messages })
+    }).then(function (r) {
+      if (!r.ok) { return r.json().catch(function () { return {}; }).then(function (j) { throw new Error((j && j.error && j.error.message) || ("HTTP " + r.status)); }); }
+      return r.json();
+    }).then(function (data) {
+      var c = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+      if (!c) throw new Error("空回复");
+      return String(c).trim();
+    });
+  }
+  // 文本摘要
+  function generateTextSummary(buf, base, key, model) {
+    return extractPdfText(buf).then(function (text) { if (!text || text.length < 40) throw 0; return callChat(base, key, model, [{ role: "system", content: SUMMARY_SYS }, { role: "user", content: "论文文本如下：\n\n" + text }]); });
+  }
+  // 视觉摘要：渲染页图后分批发到多模态模型
+  function generateVisionSummary(buf, base, key, model) {
+    var promptText = "我会给你论文的若干页图片。请结合这些页的文字+图表+公式理解论文。\n" + SUMMARY_SYS + "\n（若为分段收到，请只输出本段要点，最终由我汇总成完整故事。）";
+    return ensurePdfJs().then(function () {
+      return window.pdfjsLib.getDocument({ data: buf }).promise.then(function (pdf) { return renderPdfImages(pdf, glmPages()); });
+    }).then(function (imgs) {
+      if (!imgs.length) throw 0;
+      var chunk = 3, parts = [], chain = Promise.resolve();
+      for (var i = 0; i < imgs.length; i += chunk) (function (grp) {
+        chain = chain.then(function () {
+          var content = [{ type: "text", text: promptText }];
+          grp.forEach(function (im) { content.push({ type: "image_url", image_url: { url: im.data } }); });
+          return callChat(base, key, model, [{ role: "user", content: content }]).then(function (t) { parts.push("【第" + grp[0].n + "-" + grp[grp.length - 1].n + "页】\n" + t); });
+        });
+      })(imgs.slice(i, i + chunk));
+      return chain.then(function () { return parts.join("\n\n---\n\n"); });
+    });
+  }
+
+  // ---------- 生成摘要（按模型分支：GLM 多模态 / DeepSeek 文本 / GPT）----------
+  function getPdfArrayBuffer() {
+    if (currentPdfName && currentPaperDir) return fetch(siteFile(currentPaperDir + "/" + currentPdfName)).then(function (r) { if (!r.ok) throw 0; return r.arrayBuffer(); });
+    if (currentPdfBuffer) return Promise.resolve(currentPdfBuffer);
+    return Promise.reject(0);
+  }
+  function renderAnswer(status, answer) {
+    _summaryRaw = String(answer || "").trim();
+    renderMarkdownInto($("summary-content"), _summaryRaw);
+    $("summary-status").textContent = status + "（已存 " + currentPaperDir + "\\summary.md）";
+    _hasSummary = true;
+    try {
+      if (PROJECT_DIR && currentPaperDir) { ensurePaperDir(); fetch("/api/worktable/write", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ path: summaryFilePath(), content: answer }) }).catch(function () {});
+      }
+    } catch (e) {}
+    autoStage(); save();
+  }
+  function generateSummary() {
+    if (_busySummary) return;
+    var model = genModel();
+    // 所选模型缺 Key 时自动回退到有 Key 的另一路径，避免卡住不显示
+    if (model === "glm" && !getZhipuKey() && getKey()) model = "deepseek";
+    else if (model === "deepseek" && !getKey() && getZhipuKey()) model = "glm";
+    else if (model === "openai" && !openaiKey() && getKey()) model = "deepseek";
+    if (model === "glm") { if (!getZhipuKey()) { $("summary-status").textContent = "摘要未生成：请先粘贴并保存智谱 ZHIPU_API_KEY（GLM 路径）。"; return; } }
+    else if (model === "openai") { if (!openaiKey()) { $("summary-status").textContent = "摘要未生成：请先保存 OpenAI API Key（GPT 路径）。"; return; } }
+    else { if (!getKey()) { $("summary-status").textContent = "摘要未生成：请先粘贴并保存 DeepSeek API Key（文本路径）。"; return; } }
+    if (!currentPdfName && !currentPdfBuffer) { $("summary-status").textContent = "摘要未生成：请先加载论文 PDF（输入项目内文件名或本地上传）。"; return; }
+    _busySummary = true;
+    var label = model === "glm" ? "GLM 多模态" : (model === "openai" ? (openaiVision() ? "GPT 多模态" : "GPT 文本") : "DeepSeek 文本");
+    $("summary-status").textContent = "正在调用 " + label + " 生成摘要…（可能需 20~60 秒）";
+    getPdfArrayBuffer()
+      .then(function (buf) {
+        if (!buf) throw 0;
+        if (model === "glm") return generateVisionSummary(buf, "https://open.bigmodel.cn/api/paas/v4", getZhipuKey(), glmModel());
+        if (model === "openai") return openaiVision() ? generateVisionSummary(buf, openaiBase(), openaiKey(), openaiModel()) : generateTextSummary(buf, openaiBase(), openaiKey(), openaiModel());
+        return generateTextSummary(buf, "https://api.deepseek.com", getKey(), dsModel());
+      })
+      .then(function (answer) { renderAnswer("已通过 " + label + " 生成摘要（故事版）。", answer); })
+      .catch(function (err) { $("summary-content").textContent = "（生成失败）"; $("summary-status").textContent = "生成失败：" + ((err && err.message) || "请检查 Key / 网络 / pdf.js 加载"); })
+      .then(function () { _busySummary = false; });
+  }
+  // 用 pdf.js 把 PDF 指定页渲染成图片（base64 PNG）——供通用视觉摘要使用
+  function renderPdfImages(pdf, maxPages) {
+    var n = Math.min(pdf.numPages, maxPages > 0 ? maxPages : pdf.numPages);
+    var chain = Promise.resolve(), imgs = [];
+    for (var i = 1; i <= n; i++) (function (pn) {
+      chain = chain.then(function () { return pdf.getPage(pn).then(function (p) {
+        var base = p.getViewport({ scale: 1 });
+        var vp = p.getViewport({ scale: 840 / base.width });
+        var canvas = document.createElement("canvas"); canvas.width = vp.width; canvas.height = vp.height;
+        var ctx = canvas.getContext("2d");
+        return p.render({ canvasContext: ctx, viewport: vp }).promise.then(function () { imgs.push({ n: pn, data: canvas.toDataURL("image/png") }); });
+      }); });
+    })(i);
+    return chain.then(function () { return imgs; });
+  }
+
+  function fallbackCopy(t) {
+    var ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+
+  // ---------- 页面二 gate ----------
+  function renderGate() {
+    renderClarify();
+    var doneClarify = !!(state.clarifyQuestions.length && state.clarifyIndex >= state.clarifyQuestions.length);
+    $("badge-clarify").className = "dshell-badge " + (doneClarify ? "dshell-badgeDone" : state.clarifyQuestions.length ? "dshell-badgeWait" : "");
+    $("badge-clarify").textContent = doneClarify ? "已完成" : (state.clarifyQuestions.length ? "进行中" : "未开始");
+    $("target-restatement").value = state.target.restatement;
+    $("target-checklist").value = state.target.checklist;
+    $("badge-target").className = "dshell-badge " + (state.target.locked ? "dshell-badgeDone" : (state.target.restatement || state.target.checklist) ? "dshell-badgeWait" : "");
+    $("badge-target").textContent = state.target.locked ? "已完成" : ((state.target.restatement || state.target.checklist) ? "进行中" : "未开始");
+    $("target-lock-state").textContent = state.target.locked ? "已锁定" : "未锁定";
+    $("target-hint").textContent = state.target.locked ? "已锁定：可用下方的「生成精读笔记」。" : "未锁定：目标仅作参考，笔记区仍可手动编辑。";
+    $("note-content").disabled = false;
+    $("note-hint").textContent = state.target.locked ? "目标已锁定，可生成/编辑精读笔记。" : "「目标锁定」为可选引导；本笔记区可直接编辑。";
+    $("note-content").value = state.note;
+    $("badge-note").className = "dshell-badge " + (state.note ? "dshell-badgeDone" : "");
+    $("badge-note").textContent = state.note ? "已完成" : "未开始";
+  }
+  function lockTarget() {
+    state.target.restatement = $("target-restatement").value;
+    state.target.checklist = $("target-checklist").value;
+    state.target.locked = true;
+    if (phaseOf("ask") === "") setPhase("ask", "进行中");
+    renderGate(); updateStatusBar(); save();
+  }
+  function clearClarify() {
+    state.clarifyQuestions = []; state.clarifyAnswers = []; state.clarifyIndex = 0; state.clarifyDone = false; state.clarify = "";
+    renderGate(); updateStatusBar(); save();
+  }
+  function clearTarget() {
+    state.target.restatement = ""; state.target.checklist = ""; state.target.locked = false;
+    renderGate(); updateStatusBar(); save();
+  }
+
+  // ---------- 页面二：基于页面一摘要的 AI 生成（一次一题 → 目标锁定 → 精读笔记）----------
+  function page2Context() {
+    var summary = ($("summary-content").textContent || "").trim();
+    return { summary: summary };
+  }
+  function qaText() {
+    return (state.clarifyAnswers || []).filter(Boolean).map(function (it, i) { return "Q" + (i + 1) + ": " + (it.q || "") + "\nA: " + (it.a || ""); }).join("\n");
+  }
+  function qaAnsweredCount() { return (state.clarifyAnswers || []).filter(Boolean).length; }
+  // 生成下一个澄清问题（基于摘要+标注+已问答历史）
+  function askClarifyNext() {
+    var key = getKey(); if (!key) { alert("请先保存 DeepSeek API Key（文本路径）。"); return; }
+    var ctx = page2Context();
+    var sys = "你是论文精读助手，正在与用户逐题澄清一篇论文的阅读目标。请根据【论文摘要】【已问答历史】，提出下一个最适合的问题（一次只问一个，问题具体、能直接回答）。要求：只输出问题本身，不要编号、不要解释；如果你认为已经足够理解用户的阅读目标、无需再问，只输出「无更多问题」。";
+    var usr = "【论文摘要】\n" + (ctx.summary || "（暂无）") + "\n\n【已问答历史】\n" + (qaText() || "（暂无）");
+    $("clarify-q").textContent = "正在生成下一个问题…";
+    callDeepSeek(key, { system: sys, user: usr }).then(function (ans) {
+      ans = (ans || "").trim();
+      if (/无更多问题|没有(更多)?(问题|追问)|已经足够|END|已完成/i.test(ans) || (state.clarifyQuestions || []).length >= 8) {
+        state.clarifyDone = true; state.clarifyIndex = 999;
+        if (phaseOf("ask") === "") setPhase("ask", "进行中");
+        renderClarify(); updateStatusBar(); save(); return;
+      }
+      var q = ans.replace(/^\s*Q?\d*[.、)]\s*/, "").replace(/^\s*问题[:：]?\s*/, "").replace(/^\s*[“"]/, "").replace(/[”"]\s*$/, "").trim();
+      if (!q) q = ans;
+      state.clarifyQuestions.push(q);
+      state.clarifyAnswers.push(null);
+      state.clarifyIndex = state.clarifyQuestions.length - 1;
+      if (phaseOf("ask") === "") setPhase("ask", "进行中");
+      renderClarify(); updateStatusBar(); save();
+    }).catch(function (err) { alert("生成问题失败：" + ((err && err.message) || "请检查 Key/网络")); });
+  }
+  function startClarify() {
+    state.clarifyQuestions = []; state.clarifyAnswers = []; state.clarifyIndex = 0; state.clarifyDone = false;
+    askClarifyNext();
+  }
+  function renderClarify() {
+    var qs = state.clarifyQuestions || [];
+    $("clarify-transcript").value = qaText();
+    state.clarify = qaText();
+    if (state.clarifyDone) { $("clarify-current").style.display = "none"; $("clarify-progress").textContent = "澄清完成（共 " + qaAnsweredCount() + " 问）。"; return; }
+    if (!qs.length) { $("clarify-current").style.display = "none"; $("clarify-progress").textContent = "点击「开始澄清」逐题问答。"; return; }
+    var curIdx = state.clarifyIndex; if (curIdx == null || curIdx < 0 || curIdx >= qs.length) curIdx = qs.length - 1;
+    $("clarify-current").style.display = "block";
+    $("clarify-q").textContent = "【第 " + (curIdx + 1) + " 问】 " + qs[curIdx];
+    $("clarify-progress").textContent = "第 " + (curIdx + 1) + " 问";
+    $("clarify-hint").textContent = "回答后点「回答并生成下一题」";
+    $("clarify-a").value = "";
+  }
+  function answerClarifyAndNext() {
+    var qs = state.clarifyQuestions || [];
+    var curIdx = state.clarifyIndex; if (curIdx == null || curIdx < 0 || curIdx >= qs.length) { renderClarify(); return; }
+    state.clarifyAnswers[curIdx] = { q: qs[curIdx], a: $("clarify-a").value.trim() };
+    askClarifyNext();  // DS 依据回答生成下一题
+  }
+  function genTargetLock() {
+    var key = getKey(); if (!key) { alert("请先保存 DeepSeek API Key（文本路径）。"); return; }
+    var ctx = page2Context();
+    var sys = "你是论文精读助手。基于【论文摘要】【澄清问答】，输出：【目标复述】（一两句复述用户阅读这篇论文的目标）和【要点清单】（为实现该目标必须覆盖的要点，逐条列出）。用 Markdown，分为「目标复述」「要点清单」两个小节。";
+    var usr = "【论文摘要】\n" + (ctx.summary || "（暂无）") + "\n\n【澄清问答】\n" + (qaText() || "（暂无）");
+    $("target-restatement").value = "正在生成目标复述…";
+    $("target-checklist").value = "";
+    callDeepSeek(key, { system: sys, user: usr }).then(function (ans) {
+      var rest = ans, check = "";
+      var i2 = ans.indexOf("要点清单");
+      if (i2 >= 0) { rest = ans.slice(0, i2).replace(/^[\s\S]*?目标复述\s*/, "").trim(); check = ans.slice(i2).trim(); }
+      $("target-restatement").value = rest || ans.trim();
+      $("target-checklist").value = check;
+      state.target.restatement = $("target-restatement").value;
+      state.target.checklist = $("target-checklist").value;
+      if (phaseOf("ask") === "") setPhase("ask", "进行中");
+      renderGate(); updateStatusBar(); save();
+    }).catch(function (err) { alert("生成目标失败：" + ((err && err.message) || "")); });
+  }
+  function genNote() {
+    var key = getKey(); if (!key) { alert("请先保存 DeepSeek API Key（文本路径）。"); return; }
+    var ctx = page2Context();
+    var target = (state.target.restatement + "\n" + state.target.checklist).trim();
+    var sys = "你是论文精读助手。请生成正式精读笔记，严格包含：1.论文画像 2.PSR总结 3.核心贡献拆解 4.实验怎么做（模型-数据-指标-设计） 5.关键实验证据 6.我的思考 7.与我研究的关联 8.论文质量评估。用 Markdown，基于【论文摘要】【澄清问答】【阅读目标】，不要虚构。";
+    var usr = "【论文摘要】\n" + (ctx.summary || "（暂无）") + "\n\n【澄清问答】\n" + (qaText() || "（暂无）") + "\n\n【阅读目标】\n" + (target || "（暂无）");
+    $("note-content").value = "正在生成精读笔记…";
+    callDeepSeek(key, { system: sys, user: usr }).then(function (ans) {
+      state.note = ans; $("note-content").value = ans;
+      if (phaseOf("ask") === "") setPhase("ask", "进行中");
+      renderGate(); updateStatusBar(); save();
+    }).catch(function (err) { alert("生成笔记失败：" + ((err && err.message) || "")); });
+  }
+  function copyNote() {
+    var txt = $("note-content").value;
+    var done = function () { alert("已复制。"); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done).catch(function () { fallbackCopy(txt); done(); });
+    else { fallbackCopy(txt); done(); }
+  }
+
+  // ---------- 计时器 ----------
+  var timerInt = null;
+  function renderTimer() {
+    var s = state.timer.elapsed || 0;
+    var mm = Math.floor(s / 60), ss = Math.floor(s % 60);
+    $("timer-num").textContent = (mm < 10 ? "0" + mm : mm) + ":" + (ss < 10 ? "0" + ss : ss);
+    var lbl = state.timer.target || "";
+    $("timer-target").textContent = lbl ? ("目标时长：" + lbl) : "目标时长：未设定（请按需填写，如 08:00）";
+  }
+  function startTimer() {
+    if (timerInt) { return; }
+    state.timer.on = true;
+    if (!state.timer.start) state.timer.start = Date.now();
+    state.timer.elapsed = (state.timer.elapsed || 0);
+    var base = state.timer.elapsed;
+    var baseTime = Date.now();
+    timerInt = setInterval(function () {
+      state.timer.elapsed = base + (Date.now() - baseTime) / 1000;
+      renderTimer(); save();
+    }, 500);
+  }
+  function pauseTimer() {
+    if (timerInt) { clearInterval(timerInt); timerInt = null; state.timer.on = false; save(); }
+  }
+  function resetTimer() {
+    if (timerInt) { clearInterval(timerInt); timerInt = null; }
+    state.timer = { on: false, start: 0, elapsed: 0, target: state.timer.target || "" };
+    renderTimer(); save();
+  }
+
+  // ---------- 标签页切换（无强制门禁：三个页面均可自由使用）----------
+  var tabBtnMap = { read: null, ask: $("tab-btn-ask"), rehearse: $("tab-btn-rehearse") };
+  function showTab(name) {
+    var panels = document.querySelectorAll(".tab-panel");
+    Array.prototype.forEach.call(panels, function (p) { p.classList.remove("on"); });
+    $("panel-" + name).classList.add("on");
+    var btns = document.querySelectorAll(".dshell-tab");
+    Array.prototype.forEach.call(btns, function (b) { b.classList.toggle("dshell-tabOn", b.getAttribute("data-tab") === name); });
+  }
+  function gateHint(name) {
+    var msgs = { ask: "进入『②询问+生笔记』前，请先在①精读完成并在对话中确认。", rehearse: "进入『③预演』前，请先在对话中明确『进入预演』。" };
+    return msgs[name] || "";
+  }
+  Array.prototype.forEach.call(document.querySelectorAll(".dshell-tab"), function (b) {
+    b.onclick = function () {
+      var name = b.getAttribute("data-tab");
+      showTab(name);
+    };
+  });
+
+  // ---------- 页面一 完成按钮（对话确认后由状态驱动，这里提供手动兜底）----------
+  function markReadDone() { setPhase("read", "已完成"); updateStatusBar(); save(); }
+  function markAskDone() { setPhase("ask", "已完成"); updateStatusBar(); save(); }
+  // 暴露给控制台/对话中使用
+  window.__deepread = {
+    setPhase: function (t, p) { setPhase(t, p); updateStatusBar(); },
+    markReadDone: markReadDone, markAskDone: markAskDone,
+    setNote: function (txt) { state.note = txt; $("note-content").value = txt; renderGate(); save(); updateStatusBar(); },
+    setClarify: function (txt) { state.clarify = txt; renderGate(); save(); },
+    setTarget: function (rest, check, locked) { state.target.restatement = rest; state.target.checklist = check; if (locked !== undefined) state.target.locked = locked; renderGate(); save(); },
+    loadPdf: loadProjectPdf
+  };
+
+  // ---------- 绑定事件 ----------
+  function bind() {
+    $("btn-load-pdf").onclick = loadProjectPdf;
+    $("btn-summary").onclick = generateSummary;
+    $("btn-copy-md").onclick = copyMd;
+    $("btn-save-key").onclick = saveKey;
+    $("gen-model").onchange = syncConfigRows;
+    refreshKeyUI();
+    $("pdf-file").onchange = function (e) { loadLocalPdf(e.target.files[0]); };
+    $("pdf-name").addEventListener("keydown", function (e) { if (e.key === "Enter") loadProjectPdf(); });
+    $("clarify-transcript").oninput = function () { state.clarify = $("clarify-transcript").value; renderGate(); save(); };
+    $("target-restatement").oninput = function () { state.target.restatement = $("target-restatement").value; save(); };
+    $("target-checklist").oninput = function () { state.target.checklist = $("target-checklist").value; save(); };
+    $("btn-lock-target").onclick = lockTarget;
+    $("btn-clear-clarify").onclick = clearClarify;
+    $("btn-clear-target").onclick = clearTarget;
+    $("btn-load-ppt").onclick = loadProjectPpt;
+    $("ppt-file").onchange = function (e) { loadLocalPpt(e.target.files[0]); };
+    $("ppt-prev").onclick = function () { pptNav(-1); };
+    $("ppt-next").onclick = function () { pptNav(1); };
+    $("ppt-zoom-out").onclick = function () { pptSetZoom(pptZoom - 20); };
+    $("ppt-zoom-in").onclick = function () { pptSetZoom(pptZoom + 20); };
+    $("ppt-zoom-fit").onclick = function () { $("ppt-zoom").value = 100; pptZoom = 100; renderPptCurrentPage(); };
+    $("ppt-zoom").oninput = function () { pptZoom = +(this.value); renderPptCurrentPage(); };
+    (function () {
+      var lock = 0;
+      var stage = $("ppt-stage");
+      if (stage) stage.addEventListener("wheel", function (e) {
+        if (pptPageCount < 2) return;
+        if (Date.now() - lock < 260) return;
+        e.preventDefault(); lock = Date.now(); pptNav(e.deltaY > 0 ? 1 : -1);
+      }, { passive: false });
+      var rt; window.addEventListener("resize", function () { clearTimeout(rt); rt = setTimeout(renderPptCurrentPage, 200); });
+    })();
+    $("btn-clarify-next").onclick = answerClarifyAndNext;
+    $("btn-gen-clarify").onclick = startClarify;
+    $("btn-gen-target").onclick = genTargetLock;
+    $("btn-gen-note").onclick = genNote;
+    $("btn-copy-note").onclick = copyNote;
+    $("note-content").oninput = function () { state.note = $("note-content").value; renderGate(); save(); };
+    $("timer-start").onclick = startTimer;
+    $("timer-pause").onclick = pauseTimer;
+    $("timer-reset").onclick = resetTimer;
+  }
+
+  // ---------- 初始化 ----------
+  function applyAll() {
+    renderBadges(); updateStatusBar(); renderGate();
+    renderTimer();
+    autoStage();
+  }
+  bind();
+  applyAll();
+  restoreLastPdf();
+  load();
+  restoreLastPpt();
+})();
+</script>
+</body>
+</html>

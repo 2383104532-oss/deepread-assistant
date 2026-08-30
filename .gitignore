@@ -1,0 +1,31 @@
+# ---- 论文/个人研究数据（绝不提交）----
+*.pdf
+*.pptx
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+summary.md
+notes.md
+reading-state.json
+*_files/
+uploads/
+2403.*/
+AgentPoison/
+
+# ---- 密钥/环境配置（绝不提交）----
+.dsh-keys.json
+.dsh/
+*.key
+*.pem
+.env
+.env.*
+settings.json
+
+# ---- 通用忽略 ----
+node_modules/
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
