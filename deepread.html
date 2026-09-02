@@ -92,6 +92,7 @@
       <div class="row" style="justify-content:space-between">
         <h2 class="dshell-sub" style="margin:0">2. 论文结构化摘要（AI 自动生成）</h2>
         <div class="row" style="gap:6px">
+          <button class="dshell-btn dshell-btnDanger" id="btn-stop-summary" style="display:none">停止</button>
           <button class="dshell-btn dshell-btnGhost" id="btn-copy-md">复制 Markdown</button>
           <button class="dshell-btn dshell-btnGhost" id="btn-summary">生成摘要</button>
         </div>
@@ -188,12 +189,14 @@
         <h2 class="dshell-sub" style="margin:0">精读笔记展示区</h2>
         <span id="badge-note" class="dshell-badge">未开始</span>
       </div>
-      <p class="help" id="note-hint">「目标锁定」为可选引导；本笔记区可直接编辑，也可点下方一键生成精读笔记。</p>
+      <p class="help" id="note-hint">「目标锁定」为可选引导；本笔记区以 Mar‌kdown 渲染展示，可点「编辑」切到原始 Markdown 修改。</p>
       <div class="row">
         <button class="dshell-btn" id="btn-gen-note">生成精读笔记（DeepSeek）</button>
+        <button class="dshell-btn dshell-btnGhost" id="btn-toggle-note">编辑</button>
         <button class="dshell-btn dshell-btnGhost" id="btn-copy-note">复制笔记</button>
       </div>
-      <textarea class="dshell-textarea" id="note-content" rows="18" placeholder="【笔记结构】论文画像 / PSR总结 / 核心贡献拆解 / 实验怎么做(模型-数据-指标-设计) / 关键实验证据 / 我的思考 / 与我研究的关联 / 论文质量评估"></textarea>
+      <div class="md-body" id="note-view"></div>
+      <textarea class="dshell-textarea" id="note-edit" rows="18" style="display:none" placeholder="【笔记结构】论文画像 / PSR总结 / 核心贡献拆解 / 实验怎么做(模型-数据-指标-设计) / 关键实验证据 / 我的思考 / 与我研究的关联 / 论文质量评估"></textarea>
     </div>
   </section>
 
@@ -277,6 +280,11 @@
   }
   function paperRoot() { return PROJECT_DIR ? PROJECT_DIR + "\\" + currentPaperDir : ""; }
   function summaryFilePath() { return paperRoot() + "\\summary.md"; }
+  // 笔记文件命名为「与文件夹同名」：<论文文件夹>/<文件夹名>.md
+  function noteFilePath() {
+    var base = String(currentPaperDir || "note").split(/[\\/]/).filter(Boolean).pop() || "note";
+    return paperRoot() + "\\" + base + ".md";
+  }
   function stateFilePath() { return paperRoot() + "\\reading-state.json"; }
   function stateUrl() { return "/api/worktable/file?path=" + encodeURIComponent(stateFilePath()); }
   // 写入前自动创建论文文件夹（mkdir 一次建一层，逐层建）
@@ -389,6 +397,7 @@
     updateStatusBar(); save(); saveLastPdf();
     $("summary-content").textContent = ""; _hasSummary = false;
     loadSummary().then(function (found) { if (!found) generateSummary(); });
+    loadNoteFile();
   }
   // ---------- 上传 PDF 自动保存到项目同名文件夹 ----------
   function bufToB64(buf) {
@@ -446,6 +455,7 @@
       updateStatusBar(); save(); saveLastPdf();
       $("summary-content").textContent = ""; _hasSummary = false;
       loadSummary().then(function (found) { if (!found) generateSummary(); });
+      loadNoteFile();
     }).catch(function (err) {
       // 保存失败：回退为会话内 blob 查看
       currentPaperDir = folder; currentPdfName = file.name; currentPdfBuffer = null;
@@ -477,6 +487,7 @@
         $("pdf-status").textContent = "已恢复上次查看（本地上传）" + (currentPaperDir ? ("，文件夹 " + currentPaperDir) : "") + "；摘要已恢复，PDF 需重新选择。";
       }
       loadSummary().then(function (found) { if (!found) generateSummary(); });
+      loadNoteFile();
     } catch (e) {}
   }
 
@@ -733,16 +744,16 @@
   var OA_VISION = "dsh.deepread.openaiVision";
   function _lsGet(k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } }
   function _lsSet(k, v) { try { localStorage.setItem(k, String(v)); } catch (e) {} }
-  function getKey() { return _lsGet(DSP_KEY, ""); }
-  function dsModel() { return _lsGet(DS_MODEL_KEY, "deepseek-chat"); }
-  function getZhipuKey() { return _lsGet(ZP_KEY, ""); }
-  function glmModel() { return _lsGet(GLM_MODEL_KEY, "glm-4.6v-flash"); }
-  function glmPages() { var v = parseInt(_lsGet(GLM_PAGES_KEY, "18"), 10); return v > 0 ? v : 18; }
+  function getKey() { var e = $("api-key"); return e ? (e.value.trim() || _lsGet(DSP_KEY, "")) : _lsGet(DSP_KEY, ""); }
+  function dsModel() { var e = $("ds-model"); return e ? (e.value.trim() || _lsGet(DS_MODEL_KEY, "deepseek-chat")) : _lsGet(DS_MODEL_KEY, "deepseek-chat"); }
+  function getZhipuKey() { var e = $("zhipu-key"); return e ? (e.value.trim() || _lsGet(ZP_KEY, "")) : _lsGet(ZP_KEY, ""); }
+  function glmModel() { var e = $("glm-model"); return e ? (e.value.trim() || _lsGet(GLM_MODEL_KEY, "glm-4.6v-flash")) : _lsGet(GLM_MODEL_KEY, "glm-4.6v-flash"); }
+  function glmPages() { var e = $("glm-pages"); var v = parseInt(e ? e.value : "", 10); if (v > 0) return v; var s = parseInt(_lsGet(GLM_PAGES_KEY, "18"), 10); return s > 0 ? s : 18; }
   function genModel() { var s = $("gen-model"); return s ? s.value : "glm"; }
   function openaiBase() { return $("openai-base") ? $("openai-base").value.trim().replace(/\/$/, "") || _lsGet(OA_BASE, "https://api.openai.com/v1") : _lsGet(OA_BASE, "https://api.openai.com/v1"); }
-  function openaiKey() { return _lsGet(OA_KEY, ""); }
-  function openaiModel() { return _lsGet(OA_MODEL, "gpt-4o-mini"); }
-  function openaiVision() { return _lsGet(OA_VISION, "") === "1"; }
+  function openaiKey() { var e = $("openai-key"); return e ? (e.value.trim() || _lsGet(OA_KEY, "")) : _lsGet(OA_KEY, ""); }
+  function openaiModel() { var e = $("openai-model"); return e ? (e.value.trim() || _lsGet(OA_MODEL, "gpt-4o-mini")) : _lsGet(OA_MODEL, "gpt-4o-mini"); }
+  function openaiVision() { var e = $("openai-vision"); return e ? e.checked : _lsGet(OA_VISION, "") === "1"; }
   function setKeys() {
     try {
       _lsSet(DSP_KEY, $("api-key").value.trim()); _lsSet(ZP_KEY, $("zhipu-key").value.trim());
@@ -909,6 +920,12 @@
     } catch (e) {}
     autoStage(); save();
   }
+  var _summaryCanceled = false;
+  function stopSummary() {
+    _summaryCanceled = true; _busySummary = false;
+    $("btn-stop-summary").style.display = "none";
+    $("summary-status").textContent = "已停止生成。可在上方切换模型后重新点「生成摘要」。";
+  }
   function generateSummary() {
     if (_busySummary) return;
     var model = genModel();
@@ -920,8 +937,9 @@
     else if (model === "openai") { if (!openaiKey()) { $("summary-status").textContent = "摘要未生成：请先保存 OpenAI API Key（GPT 路径）。"; return; } }
     else { if (!getKey()) { $("summary-status").textContent = "摘要未生成：请先粘贴并保存 DeepSeek API Key（文本路径）。"; return; } }
     if (!currentPdfName && !currentPdfBuffer) { $("summary-status").textContent = "摘要未生成：请先加载论文 PDF（输入项目内文件名或本地上传）。"; return; }
-    _busySummary = true;
+    _summaryCanceled = false; _busySummary = true;
     var label = model === "glm" ? "GLM 多模态" : (model === "openai" ? (openaiVision() ? "GPT 多模态" : "GPT 文本") : "DeepSeek 文本");
+    $("btn-stop-summary").style.display = "";
     $("summary-status").textContent = "正在调用 " + label + " 生成摘要…（可能需 20~60 秒）";
     getPdfArrayBuffer()
       .then(function (buf) {
@@ -930,9 +948,12 @@
         if (model === "openai") return openaiVision() ? generateVisionSummary(buf, openaiBase(), openaiKey(), openaiModel()) : generateTextSummary(buf, openaiBase(), openaiKey(), openaiModel());
         return generateTextSummary(buf, "https://api.deepseek.com", getKey(), dsModel());
       })
-      .then(function (answer) { renderAnswer("已通过 " + label + " 生成摘要（故事版）。", answer); })
-      .catch(function (err) { $("summary-content").textContent = "（生成失败）"; $("summary-status").textContent = "生成失败：" + ((err && err.message) || "请检查 Key / 网络 / pdf.js 加载"); })
-      .then(function () { _busySummary = false; });
+      .then(function (answer) { if (!_summaryCanceled) renderAnswer("已通过 " + label + " 生成摘要（故事版）。", answer); else $("summary-status").textContent = "已停止生成。可切换模型后重新生成。"; })
+      .catch(function (err) {
+        if (_summaryCanceled) { $("summary-status").textContent = "已停止生成。可切换模型后重新生成。"; return; }
+        $("summary-content").textContent = "（生成失败）"; $("summary-status").textContent = "生成失败：" + ((err && err.message) || "请检查 Key / 网络 / pdf.js 加载");
+      })
+      .then(function () { _busySummary = false; $("btn-stop-summary").style.display = "none"; });
   }
   // 用 pdf.js 把 PDF 指定页渲染成图片（base64 PNG）——供通用视觉摘要使用
   function renderPdfImages(pdf, maxPages) {
@@ -968,11 +989,28 @@
     $("badge-target").textContent = state.target.locked ? "已完成" : ((state.target.restatement || state.target.checklist) ? "进行中" : "未开始");
     $("target-lock-state").textContent = state.target.locked ? "已锁定" : "未锁定";
     $("target-hint").textContent = state.target.locked ? "已锁定：可用下方的「生成精读笔记」。" : "未锁定：目标仅作参考，笔记区仍可手动编辑。";
-    $("note-content").disabled = false;
-    $("note-hint").textContent = state.target.locked ? "目标已锁定，可生成/编辑精读笔记。" : "「目标锁定」为可选引导；本笔记区可直接编辑。";
-    $("note-content").value = state.note;
+    $("note-hint").textContent = state.target.locked ? "目标已锁定，可生成/编辑精读笔记。" : "「目标锁定」为可选引导；本笔记区可直接生成/编辑。";
+    renderNote();
     $("badge-note").className = "dshell-badge " + (state.note ? "dshell-badgeDone" : "");
     $("badge-note").textContent = state.note ? "已完成" : "未开始";
+  }
+  var _noteSaveT = null;
+  function renderNote() {
+    if (!state.note) { $("note-view").innerHTML = "（尚未生成精读笔记。「目标锁定」后点「生成精读笔记」；也支持直接编辑输入。）"; $("note-edit").value = ""; return; }
+    $("note-view").innerHTML = mdRender(state.note);
+    if ($("note-edit").style.display !== "none") $("note-edit").value = state.note;
+  }
+  function toggleNote() {
+    var editing = $("note-edit").style.display !== "none";
+    if (editing) { // 从编辑切回预览
+      state.note = $("note-edit").value; renderNote();
+      $("note-view").style.display = ""; $("note-edit").style.display = "none";
+      $("btn-toggle-note").textContent = "编辑";
+    } else { // 切到编辑
+      $("note-edit").value = state.note || ""; $("note-view").style.display = "none"; $("note-edit").style.display = "";
+      $("btn-toggle-note").textContent = "预览";
+    }
+    save();
   }
   function lockTarget() {
     state.target.restatement = $("target-restatement").value;
@@ -999,12 +1037,22 @@
     return (state.clarifyAnswers || []).filter(Boolean).map(function (it, i) { return "Q" + (i + 1) + ": " + (it.q || "") + "\nA: " + (it.a || ""); }).join("\n");
   }
   function qaAnsweredCount() { return (state.clarifyAnswers || []).filter(Boolean).length; }
-  // 生成下一个澄清问题（基于摘要+标注+已问答历史）
+  function similarQ(newQ, arr) {
+    var n = String(newQ || "").replace(/\s+/g, "").toLowerCase();
+    if (n.length < 4) return false;
+    for (var i = 0; i < arr.length; i++) {
+      var e = String(arr[i] || "").replace(/\s+/g, "").toLowerCase();
+      if (e === n) return true;
+      if (n.length > 8 && e.length > 8 && n.slice(0, 10) === e.slice(0, 10)) return true;
+    }
+    return false;
+  }
+  // 生成下一个澄清问题（基于摘要 + 已问答历史，禁止重复）
   function askClarifyNext() {
     var key = getKey(); if (!key) { alert("请先保存 DeepSeek API Key（文本路径）。"); return; }
     var ctx = page2Context();
-    var sys = "你是论文精读助手，正在与用户逐题澄清一篇论文的阅读目标。请根据【论文摘要】【已问答历史】，提出下一个最适合的问题（一次只问一个，问题具体、能直接回答）。要求：只输出问题本身，不要编号、不要解释；如果你认为已经足够理解用户的阅读目标、无需再问，只输出「无更多问题」。";
-    var usr = "【论文摘要】\n" + (ctx.summary || "（暂无）") + "\n\n【已问答历史】\n" + (qaText() || "（暂无）");
+    var sys = "你是论文精读助手，正在与用户逐题澄清一篇论文的阅读目标。请根据【论文摘要】【已问答历史】，提出下一个最适合的问题（一次只问一个，问题具体、能直接回答）。要求：只输出问题本身，不要编号、不要解释；**不要重复【已问答历史】中已经问过或已经回答过的问题**，只针对还没弄懂、真正影响阅读目标的新点提问；如果你认为已经足够理解用户的阅读目标、或已无新的可问点，只输出「无更多问题」。";
+    var usr = "【论文摘要】\n" + (ctx.summary || "（暂无）") + "\n\n【已问答历史】\n" + (qaText() || "（暂无）") + "\n\n【请勿重复上面已问过的问题】";
     $("clarify-q").textContent = "正在生成下一个问题…";
     callDeepSeek(key, { system: sys, user: usr }).then(function (ans) {
       ans = (ans || "").trim();
@@ -1015,6 +1063,12 @@
       }
       var q = ans.replace(/^\s*Q?\d*[.、)]\s*/, "").replace(/^\s*问题[:：]?\s*/, "").replace(/^\s*[“"]/, "").replace(/[”"]\s*$/, "").trim();
       if (!q) q = ans;
+      // 生成的问句若与已问过的高度重复 → 视为没有新的可问点，结束澄清
+      if (similarQ(q, state.clarifyQuestions)) {
+        state.clarifyDone = true; state.clarifyIndex = 999;
+        if (phaseOf("ask") === "") setPhase("ask", "进行中");
+        renderClarify(); updateStatusBar(); save(); return;
+      }
       state.clarifyQuestions.push(q);
       state.clarifyAnswers.push(null);
       state.clarifyIndex = state.clarifyQuestions.length - 1;
@@ -1070,18 +1124,31 @@
     var target = (state.target.restatement + "\n" + state.target.checklist).trim();
     var sys = "你是论文精读助手。请生成正式精读笔记，严格包含：1.论文画像 2.PSR总结 3.核心贡献拆解 4.实验怎么做（模型-数据-指标-设计） 5.关键实验证据 6.我的思考 7.与我研究的关联 8.论文质量评估。用 Markdown，基于【论文摘要】【澄清问答】【阅读目标】，不要虚构。";
     var usr = "【论文摘要】\n" + (ctx.summary || "（暂无）") + "\n\n【澄清问答】\n" + (qaText() || "（暂无）") + "\n\n【阅读目标】\n" + (target || "（暂无）");
-    $("note-content").value = "正在生成精读笔记…";
+    $("note-view").innerHTML = "<div class='dshell-muted'>正在生成精读笔记…</div>";
     callDeepSeek(key, { system: sys, user: usr }).then(function (ans) {
-      state.note = ans; $("note-content").value = ans;
+      state.note = ans;
       if (phaseOf("ask") === "") setPhase("ask", "进行中");
-      renderGate(); updateStatusBar(); save();
-    }).catch(function (err) { alert("生成笔记失败：" + ((err && err.message) || "")); });
+      renderGate(); updateStatusBar(); save(); saveNote();
+    }).catch(function (err) { $("note-view").innerHTML = "（生成失败）"; alert("生成笔记失败：" + ((err && err.message) || "")); });
   }
   function copyNote() {
-    var txt = $("note-content").value;
+    var txt = $("note-edit").value || state.note || "";
     var done = function () { alert("已复制。"); };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done).catch(function () { fallbackCopy(txt); done(); });
     else { fallbackCopy(txt); done(); }
+  }
+  // 把精读笔记存成本地文件 <论文文件夹>/note.md（与 summary.md 类似）
+  function saveNote() {
+    if (!PROJECT_DIR || !currentPaperDir || state.note == null) return;
+    ensurePaperDir();
+    try { writeTextFile(noteFilePath(), state.note).catch(function () {}); } catch (e) {}
+  }
+  function loadNoteFile() {
+    if (!PROJECT_DIR || !currentPaperDir) return;
+    fetch("/api/worktable/file?path=" + encodeURIComponent(noteFilePath()), { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw 0; return r.text(); })
+      .then(function (t) { t = String(t || "").replace(/^\uFEFF/, "").trim(); if (t) { state.note = t; renderNote(); } })
+      .catch(function () {});
   }
 
   // ---------- 计时器 ----------
@@ -1141,7 +1208,7 @@
   window.__deepread = {
     setPhase: function (t, p) { setPhase(t, p); updateStatusBar(); },
     markReadDone: markReadDone, markAskDone: markAskDone,
-    setNote: function (txt) { state.note = txt; $("note-content").value = txt; renderGate(); save(); updateStatusBar(); },
+    setNote: function (txt) { state.note = txt; renderNote(); renderGate(); save(); updateStatusBar(); saveNote(); },
     setClarify: function (txt) { state.clarify = txt; renderGate(); save(); },
     setTarget: function (rest, check, locked) { state.target.restatement = rest; state.target.checklist = check; if (locked !== undefined) state.target.locked = locked; renderGate(); save(); },
     loadPdf: loadProjectPdf
@@ -1151,6 +1218,7 @@
   function bind() {
     $("btn-load-pdf").onclick = loadProjectPdf;
     $("btn-summary").onclick = generateSummary;
+    $("btn-stop-summary").onclick = stopSummary;
     $("btn-copy-md").onclick = copyMd;
     $("btn-save-key").onclick = saveKey;
     $("gen-model").onchange = syncConfigRows;
@@ -1186,7 +1254,8 @@
     $("btn-gen-target").onclick = genTargetLock;
     $("btn-gen-note").onclick = genNote;
     $("btn-copy-note").onclick = copyNote;
-    $("note-content").oninput = function () { state.note = $("note-content").value; renderGate(); save(); };
+    $("btn-toggle-note").onclick = toggleNote;
+    $("note-edit").oninput = function () { state.note = $("note-edit").value; renderGate(); save(); clearTimeout(_noteSaveT); _noteSaveT = setTimeout(saveNote, 800); };
     $("timer-start").onclick = startTimer;
     $("timer-pause").onclick = pauseTimer;
     $("timer-reset").onclick = resetTimer;
